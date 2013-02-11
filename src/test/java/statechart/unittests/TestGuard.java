@@ -21,20 +21,19 @@ package statechart.unittests;
 
 import statechart.Guard;
 import statechart.Metadata;
-import statechart.Parameter;
 
 public class TestGuard implements Guard {
+  private int i;
+
   TestGuard(int i) {
     this.i = i;
   }
 
-  public boolean check(Metadata data, Parameter param) {
-    TestParameter p = (TestParameter) param;
+  public boolean check(Metadata data) {
+    TestParameter p = (TestParameter)data.getParameter();
     if (p != null) {
       return p.guardvalue == i;
     }
     return false;
   };
-
-  private int i;
 }

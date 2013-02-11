@@ -25,8 +25,8 @@ package statechart;
 public interface Guard {
   /**
    * Called by the transition.
+   * 
    * @param data The runtime data object
-   * @param param The parameter for this action
    */
-  boolean check(Metadata data, Parameter param);
+  boolean check(Metadata data);
 }

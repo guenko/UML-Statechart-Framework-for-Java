@@ -19,18 +19,20 @@
  */
 package statechart;
 
-import java.util.Vector;
+import java.util.ArrayList;
+import statechart.timeout.TimerHandle;
 
 /**
  * Represents a simple state of the statechart. For debugging purposes each
  * state can have a name assigned for identification.
  */
 public class State {
+
   //============================================================================
   // ATTRIBUTES
   //============================================================================
   // The entry action to execute.
-  protected Action entryAction= null;
+  protected Action entryAction = null;
 
   // The do action to execute.
   protected Action doAction = null;
@@ -38,71 +40,84 @@ public class State {
   // The exit action to execute.
   protected Action exitAction = null;
 
-  // List of the associated transition objects.
-  protected Vector<Transition> transitions = new Vector<Transition>();
+  // List of the transitions leaving this state.
+  protected ArrayList<Transition> transitions = new ArrayList<Transition>();
 
-  // The context of this state.
-  Context context = null;
-  
-  // The statechart this state belongs to.
-  Statechart statechart = null;
+  // The parent of this state.
+  protected Context parent = null;
 
-  // The name of the state (for easier debugging).
+  // The name of this state.
   protected String name = null;
-  
-  //============================================================================
-  // METHODS
-  //============================================================================
+
+  private static final char illegalNameChars[] = { Statechart.STATE_PATH_DELIMITER, Statechart.CONCURRENT_STATE_START_CHAR, Statechart.CONCURRENT_STATE_END_CHAR,
+                                                  Statechart.CONCURRENT_STATE_DELIMTER_CHAR };
+
   /**
-   * Creates a state with the given actions. 
-   * @throws StatechartException 
+   * Creates a state as substate of the given parent and with the given actions.
+   * 
+   * @param name name of the state, has to be unique within the parent state.
+   *          Not allowed to be null or empty and must not contain the path
+   *          delimiter character
+   *          {@value statechart.Context#STATE_PATH_DELIMITER}
+   * @param parent the parent this states belongs, so this state is a substate
+   *          of this parent. Null if this state is the top level state.
+   * @param entryAction the entry action of the state
+   * @param doAction the do-action of the state
+   * @param exitAction the exit action of the state
+   * @throws StatechartException
    */
   public State(String name, Context parent, Action entryAction, Action doAction, Action exitAction) throws StatechartException {
-    if(parent == null && !(this instanceof Statechart)) {
-      throw new StatechartException("Parameter parent cannot be null");
+
+    if (parent == null && !(this instanceof Statechart)) {
+      throw new StatechartException(StatechartException.PARENT_NULL);
     }
-    if(name == null) {
-      throw new StatechartException("Parameter name cannot be null");
+    if (name == null || name.isEmpty()) {
+      throw new StatechartException(StatechartException.NAME_INVALID);
     }
-    
-    this.context = parent;
-    
-    // get the statechart, we need it for the event queues
-    if(parent != null) {
-      while(parent.context != null) {
-        parent = parent.context;
+    for (int i = 0; i < illegalNameChars.length; i++) {
+      if (name.indexOf(illegalNameChars[i]) != -1) {
+        throw new StatechartException(StatechartException.NAME_INVALID_CHARACTER);
       }
-      if(parent instanceof Statechart) {
-        this.statechart = (Statechart)parent;
-        if(this.statechart.states.containsKey(name)) {
-          throw new StatechartException("State name <" + name + "> already used! Please define a unique name.");
-        }
-        this.statechart.states.put(name, this);
-      } else {
-        throw new StatechartException("Cannot determine path to the statechart. Check the hierarchy.");
+    }
+
+    this.parent = parent;
+
+    // get up until the the top level state is reached
+    if (parent != null) {
+      while (parent.parent != null) {
+        parent = parent.parent;
       }
+      // top level state has to be the statechart
+      if (!(parent instanceof Statechart)) {
+        throw new StatechartException(StatechartException.NO_TOP_LEVEL_STATECHART);
+      }
+      // the state name has to be unique within our parent
+      if (this.parent.getSubstate(name) != null) {
+        throw new StatechartException(StatechartException.NAME_NOT_UNIQUE);
+      }
+      this.parent.addSubstate(this);
     }
 
     this.name = name;
     this.entryAction = entryAction;
     this.doAction = doAction;
-    this.exitAction = exitAction;    
+    this.exitAction = exitAction;
   }
 
   //============================================================================
 
   /**
-   * Gets the context
+   * Gets the parent of this state
    */
-  public Context getContext() { 
-    return context;
+  public Context getParent() {
+    return parent;
   };
 
   //============================================================================
 
   /**
-   * Sets the entry action. If there is already an action given,
-   * it will be destroyed first.
+   * Sets the entry action. If there is already an action given, it will be
+   * destroyed first.
    */
   public void setEntryAction(Action action) {
     this.entryAction = action;
@@ -111,8 +126,8 @@ public class State {
   //============================================================================
 
   /**
-   * Sets the do action. If there is already an action given,
-   * it will be destroyed first.
+   * Sets the do action. If there is already an action given, it will be
+   * destroyed first.
    */
   public void setDoAction(Action action) {
     this.doAction = action;
@@ -121,11 +136,11 @@ public class State {
   //============================================================================
 
   /**
-   * Sets the exit action. If there is already an action given,
-   * it will be destroyed first.
+   * Sets the exit action. If there is already an action given, it will be
+   * destroyed first.
    */
   public void setExitAction(Action action) {
-    this.exitAction = action;    
+    this.exitAction = action;
   }
 
   //============================================================================
@@ -142,18 +157,19 @@ public class State {
   /**
    * return the given name
    */
-  public String toString() { 
-    return name == null ? "" : name;
+  public String toString() {
+    assert (name != null);
+    return name;
   }
 
   //============================================================================
 
   /**
-   * Adds a transition to the list.
+   * Adds a transition to the list of transitions leaving this state.
    */
   void addTransition(Transition transition) {
     // make sure transition with guards are checked first!
-    if(transition.hasGuard()) {
+    if (transition.hasGuard()) {
       transitions.add(0, transition);
     } else {
       transitions.add(transition);
@@ -165,30 +181,31 @@ public class State {
   /**
    * Activates the state.
    */
-  boolean activate(Metadata data, Parameter parameter) {
-    if(!data.isActive(this)) {
+  boolean activate(Metadata data) {
+    if (!data.isActive(this)) {
       data.activate(this);
-      
-      // trigger the timout events if available
-      for(int i = 0; i < transitions.size(); i++)  {
+
+      // set up a timer if the state has an outgoing transition with a
+      // TimeoutEvent
+      for (int i = 0; i < transitions.size(); i++) {
         Transition t = transitions.get(i);
-        if(t.event != null && t.event instanceof TimeoutEvent) {
-          TimeoutEvent event = (TimeoutEvent)t.event;          
-          EventQueueEntry entry = new EventQueueEntry(statechart, 
-                                                      this, data, event, parameter,
-                                                      ((TimeoutEvent)event).getTimout());
+        if (t.event != null && t.event instanceof TimeoutEvent) {
+          TimerHandle timerHandle = Statechart.getTimerManager().startTimer(this, data, (TimeoutEvent)t.event);
+          assert (timerHandle != null);
+          // set the timer handle in order to cancel if state is left before
+          // timeout is raised
           StateRuntimedata runtimedata = data.getData(this);
-          runtimedata.timeoutEvents.add(entry);
-          statechart.timeoutEventQueue.add(entry);
+          assert (runtimedata.timerHandle == null);
+          runtimedata.timerHandle = timerHandle;
         }
       }
-      
-      if(entryAction != null) {
-        entryAction.execute(data, parameter);
+
+      if (entryAction != null) {
+        entryAction.execute(data);
       }
 
-      if(doAction != null) {
-        doAction.execute(data, parameter);
+      if (doAction != null) {
+        doAction.execute(data);
       }
       return true;
     }
@@ -200,27 +217,23 @@ public class State {
   /**
    * Deactivates the state.
    */
-  void deactivate(Metadata data, Parameter parameter) {
-    if(data.isActive(this)) {
-      // Mark events as invalid
-      Vector<EventQueueEntry> timeoutEvents = data.getData(this).timeoutEvents;
-      if(timeoutEvents != null) {
-        for (EventQueueEntry event : timeoutEvents) {
-          event.invalid = true;
-          /*
-           * @FIXME
-           * @See Java-Bug ID: 6268068. Proposed fix is to use:
-           * removeAll(Collections.singletonList(event)).  
-           *
-           * Problem: Leads to ConcurrentModificationException. Final fix is in JDK6
-           */
-          statechart.timeoutEventQueue.remove(event);
-        }
+  void deactivate(Metadata data) {
+    if (data.isActive(this)) {
+      // Check if there are running timers started by a TimeoutEvent transition
+      // leaving this state
+      TimerHandle timerHandle = data.getData(this).timerHandle;
+      if (timerHandle != null) {
+        // if so cancel the running timer
+        Statechart.getTimerManager().cancelTimer(timerHandle);
       }
+      // we have to clear the timerHandle since the deactivate()
+      // will not remove the RuntimeData in any case
+      data.getData(this).timerHandle = null;
       data.deactivate(this);
-      if(exitAction != null) {
-        exitAction.execute(data, parameter);
-      }      
+
+      if (exitAction != null) {
+        exitAction.execute(data);
+      }
     }
   }
 
@@ -229,12 +242,60 @@ public class State {
   /**
    * Dispatches the given event.
    */
-  boolean dispatch(Metadata data, Event event, Parameter parameter) {
-    for(int i = 0; i < transitions.size(); i++)  {
-      if(transitions.get(i).execute(event, data, parameter)) {
+  /**
+   * Dispatch the given event to this state. Try to find an transition consuming
+   * this event.
+   * 
+   * @param data the runtime data
+   * @param event the event to dispatch
+   * @return whether the event had triggered a transition and is consumed
+   */
+  boolean dispatch(Metadata data, Event event) {
+    for (int i = 0; i < transitions.size(); i++) {
+      if (transitions.get(i).execute(event, data)) {
         return true;
       }
     }
     return false;
+  }
+
+  //============================================================================
+
+  /**
+   * Get a string representing the current state configuration starting with
+   * this state. This shows all active end node states of all concurrent states.
+   */
+  String getStateConfigurationInternal(Metadata data) {
+    String traceString = toString();
+    StateRuntimedata stateRuntimeData = data.getData(this);
+    if (stateRuntimeData == null) {
+      return traceString;
+    }
+    State currentState = stateRuntimeData.currentState;
+    /*
+     * check also for isActive (existence in activeState map), since in between
+     * a transition the currentState may have a tangling reference (the state it
+     * reference to is already removed from the activeStates map)
+     */
+    if (currentState != null && data.isActive(currentState)) {
+      traceString += Statechart.STATE_PATH_DELIMITER + currentState.getStateConfigurationInternal(data);
+    }
+    return traceString;
+  }
+
+  /**
+   * Retrieve the state in the hierarchical tree below this state identified by
+   * the path relative to this state. This returned path specification lists the
+   * substate names starting from the current level down to the bottom delimited
+   * by the ':' character
+   * 
+   * @param path relative path starting with the substate of this state, e.g.
+   *          "substate:subsubstate:subsubsubsate"
+   * @return the state found or null if not found
+   */
+  public State getState(String path) {
+    // when this method is not overwritten this state is a simple state, thus it
+    // cannot have a substate
+    return null;
   }
 }

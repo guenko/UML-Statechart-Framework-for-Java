@@ -19,14 +19,10 @@
  */
 package statechart;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Vector;
-import java.util.concurrent.DelayQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
+import statechart.timeout.ScheduledTimerManager;
+import statechart.timeout.TimerManager;
 
 /**
  * The main entry point for using the statechart framework. Contains all
@@ -34,127 +30,141 @@ import java.util.concurrent.TimeUnit;
  * deleting the statechart all substates, actions, events, guards and transition
  * will be deleted automatically.
  */
-public class Statechart extends Context implements Runnable {
+public class Statechart extends Context {
+
+  public static final String VERSION = "1.2.0";
+
+  /** delimiter character separating the state names in a state path string */
+  public final static char STATE_PATH_DELIMITER = ':';
+  /** starting character for the active states list of a concurrent state */
+  public final static char CONCURRENT_STATE_START_CHAR = '(';
+  /** closing character for the active states list of a concurrent state */
+  public final static char CONCURRENT_STATE_END_CHAR = ')';
   /**
-   * Creates the threads for the ThreadPoolExecutor. These threads may be daemon
-   * or non-daemon threads.
+   * character delimiting the elements in the active states list of a concurrent
+   * state
    */
-  class StatechartThreadFactory implements ThreadFactory {
-    //============================================================================
-    // ATTRIBUTES
-    //============================================================================
-    private String id;
-    private int threadCount = 0;
-    private boolean makeDaemonThreads = false;
-    private ThreadGroup threadGroup = null;
+  public final static char CONCURRENT_STATE_DELIMTER_CHAR = '|';
 
-    //============================================================================
-    // METHODS
-    //============================================================================
-    public StatechartThreadFactory(String id, boolean makeDaemonThreads) {
-      this.makeDaemonThreads = makeDaemonThreads;
-      this.id = id;
-      threadGroup = new ThreadGroup(id);
-    }
+  // private static SchedulerFactory = new DefaultSchedulerFactory();
+  private static TimerManager timerManager = null;
+  private static ArrayList<Metadata> dataReferenceList = new ArrayList<Metadata>();
 
-    //==========================================================================
-
-    public Thread newThread(Runnable r) {
-      String name = null;
-      synchronized (this) {
-        ++threadCount;
-        name = id + "-thread-" + threadCount;
-      }
-      Thread t = new Thread(threadGroup, r, name);
-      t.setDaemon(makeDaemonThreads);
-      return t;
-    }
-  }
-
-  //============================================================================
-  // ATTRIBUTES
-  //============================================================================
-  public static final String VERSION = "1.1.0";
-  private ExecutorService threadpool = null;
-  DelayQueue<EventQueueEntry> timeoutEventQueue = new DelayQueue<EventQueueEntry>();
-  HashMap<String, State> states = new HashMap<String, State>();
-
-  //============================================================================
-  // METHODS
-  //============================================================================
   /**
    * Creates the Statechart with the given default and maximum number of
    * threads.
-   *
+   * 
    * @param name The name of the statechart. This must be unique for all
    *          statecharts in the running JVM.
-   * @param threads The maximum number of threads available in the
-   *          threadpool.
+   * @param threads The maximum number of threads available in the threadpool.
    * @param makeDaemonThreads Specifies if the created threads should be daemon
    *          or non-daemon threads.
    * @throws StatechartException
    */
   public Statechart(String name, int threads, boolean makeDaemonThreads) throws StatechartException {
     super(name, null, null, null, null);
-    // we need at least two threads for asynchronous and timeout events
-    if(threads < 2) {
-      threads = 2;
+  }
+
+  public Statechart(String name) throws StatechartException {
+    this(name, 10, false);
+  }
+
+  static TimerManager getTimerManager() {
+    if (timerManager == null) {
+      timerManager = new ScheduledTimerManager();
     }
-    threadpool = Executors.newFixedThreadPool(threads, new StatechartThreadFactory(name, makeDaemonThreads));
-    threadpool.execute(this);
+    return timerManager;
+  }
+
+  void addDataReference(Metadata data) {
+    dataReferenceList.add(data);
+  }
+
+  void remvoeDataReference(Metadata data) {
+    dataReferenceList.remove(data);
   }
 
   //============================================================================
 
   /**
-   * Shutdown of the threadpool. The pool waits 60 seconds at most before
-   * shutting down hard.
-   *
-   * @throws InterruptedException
-   */
-  public synchronized void shutdown() {
-    threadpool.shutdown();
-    timeoutEventQueue.clear();
-    // send an empty event to the queue to get back from the delay queues take method
-    timeoutEventQueue.add(new EventQueueEntry(this, this, null, null, null, 0));
-    try {
-      threadpool.awaitTermination(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      // ignore and just exit the method
-    }
-  }
-
-  //============================================================================
-
-  /**
-   * Initializes the Statechart in the runtime data. Sets the start state.
+   * Associates this state chart with the given data object and starts the state
+   * machine synchronously.
    */
   public boolean start(Metadata data) {
-    Parameter parameter = new Parameter();
-    return start(data, parameter);
+    return data.start(this);
+  }
+
+  /**
+   * Overrides the dispatch method from the state and takes care of delegating
+   * the incoming event to the current state.
+   */
+  public boolean dispatch(Metadata data, Event event) {
+    if (data.getTracer() != null) {
+      data.getTracer().eventDispatched(event);
+    }
+    State currentState = data.getData(this).currentState;
+    boolean rc = currentState.dispatch(data, event);
+
+    // call dispatch as long as we hit states with completion transitions
+    do {
+      if (data.getTracer() != null && rc) {
+        data.getTracer().stateChanged(data);
+      }
+      currentState = data.getData(this).currentState;
+    } while (currentState != null && currentState.dispatch(data, null));
+
+    if (data.getTracer() != null) {
+      data.getTracer().traceEventFinished();
+    }
+    return rc;
   }
 
   //============================================================================
 
   /**
-   * Initializes the Statechart in the runtime data. Sets the start state.
+   * Associates this state chart with the given data object and starts the state
+   * machine asynchronously.
+   * 
+   * @throws InterruptedException
    */
-  public boolean start(Metadata data, Parameter parameter) {
-    data.reset();
-    data.activate(this);
-    data.activate(startState);
-    return dispatch(data, null, parameter);
+  public boolean startAsynchron(Metadata data) throws InterruptedException {
+    return data.startAsynchron(this);
+  }
+
+  /**
+   * Adds an event to the event queue.
+   */
+  public boolean dispatchAsynchron(Metadata data, Event event) {
+    return data.dispatchAsynchron(event);
+  }
+
+  //============================================================================
+
+  /**
+   * Shutdown of the statechart framework, so shutdown the timer manager and all
+   * attached metadata objects
+   */
+  public static void shutdown() {
+    if (timerManager != null) {
+      timerManager.shutdown(1000);
+      timerManager = null;
+    }
+    @SuppressWarnings("unchecked")
+    ArrayList<Metadata> list = (ArrayList<Metadata>)dataReferenceList.clone();
+    for (Metadata data : list) {
+      data.shutdown();
+    }
   }
 
   //============================================================================
 
   /**
    * Sets a new data object to continue from the given state. This is usually
-   * needed for persistance to restore the state after a restart of the JVM
-   * or if the data object was deleted sometime ago.
+   * needed for persistance to restore the state after a restart of the JVM or
+   * if the data object was deleted sometime ago.
    */
-  public boolean restoreState(State state, Metadata data, Parameter parameter) {
-    if(data.isActive(this)) {
+  public boolean restoreState(State state, Metadata data) {
+    if (data.isActive(this)) {
       return false;
     }
     data.reset();
@@ -163,122 +173,15 @@ public class Statechart extends Context implements Runnable {
     State parent = state;
     do {
       path.add(0, parent);
-      parent = parent.context;
-    } while(parent != null);
+      parent = parent.parent;
+    } while (parent != null);
 
     for (State s : path) {
-      s.activate(data, parameter);
+      s.activate(data);
     }
     return true;
   }
 
   //============================================================================
 
-  /**
-   * Calls the dispatch method on the current state.
-   */
-  public boolean dispatch(Metadata data, Event event) {
-    Parameter parameter = new Parameter();
-    return dispatch(data, event, parameter);
-  }
-
-  //============================================================================
-
-  /**
-   * Overrides the dispatch method from the state and takes care of delegating
-   * the incoming event to the current state.
-   */
-  public boolean dispatch(Metadata data, Event event, Parameter parameter) {
-    boolean rc = false;
-    synchronized (data) {
-      State currentState = data.getData(this).currentState;
-      rc = currentState.dispatch(data, event, parameter);
-
-      // call dispatch as long as we hit states with end transitions
-      do {
-        currentState = data.getData(this).currentState;
-      } while (currentState != null && currentState.dispatch(data, null, parameter));
-    }
-    return rc;
-  }
-
-  //============================================================================
-
-  /**
-   * Initializes the Statechart in the runtime data. Sets the start state and
-   * triggers an initial asynchronous dispatch.
-   */
-  public void startAsynchron(Metadata data) {
-    Parameter parameter = new Parameter();
-    startAsynchron(data, parameter);
-  }
-
-  //============================================================================
-
-  /**
-   * Initializes the Statechart in the runtime data. Sets the start state and
-   * triggers an initial asynchronous dispatch.
-   */
-  public void startAsynchron(Metadata data, Parameter parameter) {
-    data.reset();
-    data.activate(this);
-    data.activate(startState);
-    dispatchAsynchron(data, null, parameter);
-  }
-
-  //============================================================================
-
-  /**
-   * Adds an event to the event queue.
-   */
-  public void dispatchAsynchron(Metadata data, Event event) {
-    Parameter parameter = new Parameter();
-    dispatchAsynchron(data, event, parameter);
-  }
-
-  //============================================================================
-
-  /**
-   * Adds an event to the event queue.
-   */
-  public void dispatchAsynchron(Metadata data, Event event, Parameter parameter) {
-    if (!threadpool.isShutdown()) {
-      if (event instanceof TimeoutEvent) {
-        timeoutEventQueue.add(new EventQueueEntry(this, this, data, event, parameter,
-                                                  ((TimeoutEvent)event).getTimout()));
-      } else {
-        threadpool.execute(new EventQueueEntry(this, this, data, event, parameter, 0));
-      }
-    }
-  }
-
-  //============================================================================
-
-  /**
-   * Since every state must have a unique name, it is possible to get the
-   * state object by name.
-   */
-  public final State getStateByName(String string) {
-    return states.get(string);
-  }
-
-  //============================================================================
-  // Inherited by Runnable
-  //============================================================================
-  /**
-   * Dequeues elements from the timeout queue and dispatches them
-   */
-  public void run() {
-    while (!threadpool.isShutdown()) {
-      try {
-        EventQueueEntry event = timeoutEventQueue.take();
-        threadpool.execute(event);
-      } catch (InterruptedException e) {
-        // ignore the exception. Just run the next loop and take method if
-        // necessary
-      } catch (RejectedExecutionException e) {
-        // Normally this means that the threadpool has been shutted down
-      }
-    }
-  }
 }

@@ -21,22 +21,20 @@ package statechart.unittests;
 
 import statechart.Action;
 import statechart.Metadata;
-import statechart.Parameter;
 
 public class TestAction implements Action {
+  private String name;
+  private String action;
+
   public TestAction(String name, String action) {
     this.name = name;
     this.action = action;
   }
 
-  public void execute(Metadata data, Parameter param) {
-    TestParameter parameter = (TestParameter) param;
-    parameter.path += 
-        (parameter.path.length() != 0 ? " " : "") 
-        + action + ":" + name;
+  public void execute(Metadata data) {
+    TestParameter parameter = ((TestParameter)data.getParameter());
+    parameter.path +=
+        (parameter.path.length() != 0 ? " " : "")
+            + action + ":" + name;
   };
-
-  private String name;
-
-  private String action;
 }

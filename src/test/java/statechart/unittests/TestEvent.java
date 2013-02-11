@@ -25,12 +25,13 @@ import statechart.Parameter;
 
 public class TestEvent extends Event {
   TestEvent(int i) {
+    super(String.valueOf(i));
     this.i = i;
   }
 
   public boolean equals(Event event, Metadata data, Parameter param) {
-    if(event instanceof TestEvent) {
-      TestEvent e = (TestEvent) event;
+    if (event instanceof TestEvent) {
+      TestEvent e = (TestEvent)event;
       if (e != null) {
         return e.getNumber() == i;
       }

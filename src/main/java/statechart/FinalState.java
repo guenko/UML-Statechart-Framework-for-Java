@@ -25,7 +25,8 @@ package statechart;
 public class FinalState extends State {
   /**
    * Creates a new Finalstate.
-   * @throws StatechartException 
+   * 
+   * @throws StatechartException
    */
   public FinalState(String name, Context parent) throws StatechartException {
     super(name, parent, null, null, null);

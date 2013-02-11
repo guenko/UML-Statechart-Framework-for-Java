@@ -46,8 +46,8 @@ public class TestCharts {
     return chart;
   }
 
-  static Statechart t2() throws StatechartException {
-    Statechart chart = new Statechart("t2", 10, false);
+  static Statechart t2(int threads) throws StatechartException {
+    Statechart chart = new Statechart("t2", threads, false);
     State s1 = new State("a", chart, new TestAction("a", "A"), null, new TestAction("a", "D"));
     State p1 = new PseudoState("start", chart, PseudoState.pseudostate_start);
     State p2 = new FinalState("end", chart);

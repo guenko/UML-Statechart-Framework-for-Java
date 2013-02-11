@@ -41,33 +41,34 @@ public class PseudoState extends State {
 
   /** Incoming transitions (needed for join) */
   Vector<Transition> incoming = null;
-  
+
   //============================================================================
   // METHODS
   //============================================================================
   /**
    * Creates a pseudo state with the given type.
-   * @throws StatechartException 
+   * 
+   * @throws StatechartException
    */
   public PseudoState(String name, Context parent, int type) throws StatechartException {
     super(name, parent, null, null, null);
     this.type = type;
-    if(type == pseudostate_start) {
-      if(parent.startState == null) {
-        parent.startState = this;        
+    if (type == pseudostate_start) {
+      if (parent.startState == null) {
+        parent.startState = this;
       } else {
-        throw new StatechartException("Parent has already a start state!");
+        throw new StatechartException(StatechartException.PARENT_HAS_ALREADY_START_STATE);
       }
     } else if (type == pseudostate_history || type == pseudostate_deep_history) {
-      if(parent instanceof HierarchicalState) {
+      if (parent instanceof HierarchicalState) {
         HierarchicalState h = (HierarchicalState)parent;
-        if(h.history == null) {
+        if (h.history == null) {
           h.history = this;
         } else {
-          throw new StatechartException("Parent has already a history state!");
+          throw new StatechartException(StatechartException.PARENT_HAS_ALREADY_HISTORY_STATE);
         }
       } else {
-        throw new StatechartException("Parent is not hierarchical state!");
+        throw new StatechartException(StatechartException.PARENT_NOT_A_HIERACHICAL_STATE);
       }
     }
   }
@@ -87,22 +88,21 @@ public class PseudoState extends State {
    * Does a lookup if this pseudo state can be activated. This is true when
    * there exists a path to the next real state.
    */
-  boolean lookup(Metadata data, Parameter parameter) {
+  boolean lookup(Metadata data) {
     // check if all incoming transitions can trigger
-    if(type == pseudostate_join) {
-      for(int i = 0; i < incoming.size(); i++) {
+    if (type == pseudostate_join) {
+      for (int i = 0; i < incoming.size(); i++) {
         Transition t = incoming.get(i);
         StateRuntimedata d = data.getData(t.deactivate.get(0));
-        if(d == null || d != null && !d.active || t.hasGuard() 
-           && !t.guard.check(data, parameter) ) {
+        if (d == null || d != null && !d.active || t.hasGuard() && !t.guard.check(data)) {
           return false;
         }
       }
     }
 
     // check if an outgoing transition can trigger
-    for(int i = 0; i < transitions.size(); i++) {
-      if(transitions.get(i).allowed(data, parameter)) {
+    for (int i = 0; i < transitions.size(); i++) {
+      if (transitions.get(i).allowed(data)) {
         return true;
       }
     }
@@ -115,29 +115,30 @@ public class PseudoState extends State {
    * Activates the state and executes the next nessecary steps depending on the
    * type. Overwrites the method from class State.
    */
-  boolean activate(Metadata data, Parameter parameter) {
+  @Override
+  boolean activate(Metadata data) {
     data.activate(this);
     StateRuntimedata d = data.getData(this);
 
-    if(entryAction != null) {
-      entryAction.execute(data, parameter);
+    if (entryAction != null) {
+      entryAction.execute(data);
     }
 
-    if(type == pseudostate_history || type == pseudostate_deep_history) {
-      for(int i = 0; i < d.stateset.size(); i++) {
-        d.stateset.get(i).activate(data, parameter);
+    if (type == pseudostate_history || type == pseudostate_deep_history) {
+      for (int i = 0; i < d.stateset.size(); i++) {
+        d.stateset.get(i).activate(data);
       }
-    } else if(type == pseudostate_fork) {
+    } else if (type == pseudostate_fork) {
       // Exclude regions from automatic activation through the and-state
-      for(int j = 0; j < transitions.size(); j++) {
+      for (int j = 0; j < transitions.size(); j++) {
         Transition t = transitions.get(j);
         // Activate the region at it's start state if the guard fails.
-        if(t.guard != null && !t.guard.check(data, parameter)) {
+        if (t.guard != null && !t.guard.check(data)) {
           continue;
         }
 
-        for(int i = 0; i < t.activate.size(); i++) {
-          if(i + 1 < t.activate.size() && t.activate.get(i) instanceof ConcurrentState) {
+        for (int i = 0; i < t.activate.size(); i++) {
+          if (i + 1 < t.activate.size() && t.activate.get(i) instanceof ConcurrentState) {
             ConcurrentState s = (ConcurrentState)t.activate.get(i);
             StateRuntimedata cd = data.createRuntimedata(s);
 
@@ -147,7 +148,7 @@ public class PseudoState extends State {
           }
         }
       }
-    } else if(type == pseudostate_join) {
+    } else if (type == pseudostate_join) {
       // trigger every action of all incoming transitions
     }
 
@@ -161,10 +162,9 @@ public class PseudoState extends State {
    */
   void storeHistory(Metadata data) {
     StateRuntimedata d = data.getData(this);
-    if(d != null) {
+    if (d != null) {
       d.stateset.clear();
-      PseudoState.calculate(d.stateset, data.getData(context).currentState, 
-          data, type);
+      PseudoState.calculate(d.stateset, data.getData(parent).currentState, data, type);
     }
   }
 
@@ -176,21 +176,22 @@ public class PseudoState extends State {
    * active state and not the history pseudostate anymore. for other states
    * simply call the base method.
    */
-  boolean dispatch(Metadata data, Event event, Parameter parameter) {
+  @Override
+  boolean dispatch(Metadata data, Event event) {
     if (type == pseudostate_history || type == pseudostate_deep_history) {
-      StateRuntimedata d = data.getData(context);
+      StateRuntimedata d = data.getData(parent);
       if (d != null && d.currentState != null && d.currentState != this) {
-        return d.currentState.dispatch(data, event, parameter);
+        return d.currentState.dispatch(data, event);
       }
     } else if (type == pseudostate_fork) {
       // enter the state and execute the transitions
       for (int i = 0; i < transitions.size(); i++) {
         Transition t = transitions.get(i);
-        t.execute(event, data, parameter);
+        t.execute(event, data);
       }
       return true;
     }
-    return super.dispatch(data, event, parameter);
+    return super.dispatch(data, event);
   }
 
   //============================================================================
@@ -223,19 +224,16 @@ public class PseudoState extends State {
     }
 
     if (s instanceof HierarchicalState) {
-      StateRuntimedata runtimedata = data.getData((HierarchicalState) s);
+      StateRuntimedata runtimedata = data.getData((HierarchicalState)s);
       State substate = runtimedata != null ? runtimedata.currentState : null;
       if (substate != null) {
         calculate(history, substate, data, type);
       }
     }
-/*
-    if (s instanceof ConcurrentState) {
-      Vector regions = ((ConcurrentState) s).regions;
-      for (int i = 0; i < regions.size(); i++) {
-        calculate(history, (State) regions.get(i), data, type);
-      }
-    }
-    */
+    /*
+     * if (s instanceof ConcurrentState) { Vector regions = ((ConcurrentState)
+     * s).regions; for (int i = 0; i < regions.size(); i++) { calculate(history,
+     * (State) regions.get(i), data, type); } }
+     */
   }
 }

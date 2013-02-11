@@ -23,54 +23,36 @@ package statechart;
  * Interface for an event for the statechart.
  */
 public abstract class Event {
-  //============================================================================
-  // ATTRIBUTES
-  //============================================================================
   /**
-   * The ID of the event
+   * The name of the event used to identify the event and to distinguish it from
+   * other events
    */
-  String id = new String();
-  
-  //============================================================================
-  // METHODS
-  //============================================================================
-  /**
-   * Creates an event
-   */
-  public Event() {
-  };
-
-  //============================================================================
+  private String id = new String();
 
   /**
-   * Creates an event with a given id 
-   * @param id
+   * Creates an event with a given id
+   * 
+   * @param id the event's unique name
    */
   public Event(String id) {
     this.id = id;
   };
 
-  //============================================================================
-
   /**
-   * Called by the transition to check if it should handle this event.
+   * Check if this event is the same event as the given one. E.g. called by the
+   * transition handling to check if it should handle the given event.
    * 
-   * @param event
-   *          the event to compare
-   * @param data
-   *          The runtime data object
-   * @param param
-   *          The parameter for this action
+   * @param event the event to compare
+   * @param data the runtime data object
    */
-  public boolean equals(Event event, Metadata data, Parameter param) {
-    return event != null ? id.compareTo(event.toString()) == 0 : false;
+  public boolean equals(Event event) {
+    return this.id.equals(event != null ? event.id : null);
   };
 
-  //============================================================================
-
   /**
-   * Returns the id
+   * The string representation of the event, her the unique name of the event
    */
+  @Override
   public String toString() {
     return id;
   }

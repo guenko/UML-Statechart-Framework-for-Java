@@ -20,9 +20,10 @@
 package statechart;
 
 import java.util.Vector;
+import statechart.timeout.TimerHandle;
 
 /**
- * Holds the runtime specific data for a state in the statechart.
+ * Holds the runtime specific data for a certain state in the statechart.
  */
 public class StateRuntimedata {
   //============================================================================
@@ -32,31 +33,32 @@ public class StateRuntimedata {
    * The current time the state is activated
    */
   public long currentTime = 0;
-  
+
   /**
    * If the state is active
    */
   public boolean active = false;
-  
+
   /**
    * The current activated substate
    */
   public State currentState = null;
-  
+
   /**
-   * A generic set of states, needed e.g. for history storage or region activation
+   * A generic set of states, needed e.g. for history storage or region
+   * activation
    */
   public Vector<State> stateset = new Vector<State>();
-    
+
   /**
-   * A set of all events which are currently in the timeoutQueue
+   * The set of timeout's currently active for the state
    */
-  public Vector<EventQueueEntry> timeoutEvents = new Vector<EventQueueEntry>();
+  public TimerHandle timerHandle = null;
 
   //============================================================================
   // Methods
   //============================================================================
-	@Override
+  @Override
   public String toString() {
     StringBuilder builder = new StringBuilder();
     builder.append("StateRuntimedata [active=");
@@ -67,9 +69,9 @@ public class StateRuntimedata {
     builder.append(currentTime);
     builder.append(", stateset=");
     builder.append(stateset);
-    builder.append(", timeoutEvents=");
-    builder.append(timeoutEvents);
+    builder.append(", timerHandle=");
+    builder.append(timerHandle);
     builder.append("]");
     return builder.toString();
-	}
+  }
 }

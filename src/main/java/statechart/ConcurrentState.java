@@ -32,43 +32,44 @@ public class ConcurrentState extends Context {
    * The regions of the AND-composition.
    */
   private Vector<HierarchicalState> regions = new Vector<HierarchicalState>();
-  
+
   //============================================================================
   // METHODS
   //============================================================================
   /**
    * Creates a simple OR-composite-state with the given actions.
-   * @throws StatechartException 
+   * 
+   * @throws StatechartException
    */
   public ConcurrentState(String name, Context parent, Action entryAction, Action doAction, Action exitAction) throws StatechartException {
     super(name, parent, entryAction, doAction, exitAction);
-  }  
+  }
 
   //============================================================================
 
   /**
    * Adds a new region
    * 
-   * @throws StatechartException 
+   * @throws StatechartException
    */
   void addRegion(HierarchicalState region) {
     regions.add(region);
   }
 
   //============================================================================
-  
+
   /**
    * Activates the state.
    */
-  boolean activate(Metadata data, Parameter parameter) {
-    if (super.activate(data, parameter)) {
+  boolean activate(Metadata data) {
+    if (super.activate(data)) {
       StateRuntimedata statedata = data.getData(this);
       for (int i = 0; i < regions.size(); i++) {
         // check if the region is activated implicit via a incoming transition
         if (!statedata.stateset.contains(regions.get(i))) {
           HierarchicalState h = regions.get(i);
-          if (h.activate(data, parameter)) {
-            h.dispatch(data, null, parameter);
+          if (h.activate(data)) {
+            h.dispatch(data, null);
           }
         }
       }
@@ -82,13 +83,13 @@ public class ConcurrentState extends Context {
   /**
    * Deactivates the state and informs the substates that they deactivate too.
    */
-  void deactivate(Metadata data, Parameter parameter) {
+  void deactivate(Metadata data) {
     data.getData(this).stateset.clear();
     for (int i = 0; i < regions.size(); i++) {
       HierarchicalState h = regions.get(i);
-      h.deactivate(data, parameter);
+      h.deactivate(data);
     }
-    super.deactivate(data, parameter);
+    super.deactivate(data);
   }
 
   //============================================================================
@@ -97,7 +98,7 @@ public class ConcurrentState extends Context {
    * Overrides the dispatch method from the state and takes care of delegating
    * the incoming event to the current state.
    */
-  boolean dispatch(Metadata data, Event event, Parameter parameter) {
+  boolean dispatch(Metadata data, Event event) {
     // at least one region must dispatch the event
     boolean dispatched = false;
 
@@ -109,7 +110,7 @@ public class ConcurrentState extends Context {
      */
     for (int i = 0; i < regions.size() && statedata.active; i++) {
       HierarchicalState h = regions.get(i);
-      if (h.dispatch(data, event, parameter)) {
+      if (h.dispatch(data, event)) {
         dispatched = true;
       }
     }
@@ -130,7 +131,7 @@ public class ConcurrentState extends Context {
         continue;
       }
 
-      if (t.execute(event, data, parameter)) {
+      if (t.execute(event, data)) {
         return true;
       }
     }
@@ -150,5 +151,19 @@ public class ConcurrentState extends Context {
       }
     }
     return true;
+  }
+
+  @Override
+  String getStateConfigurationInternal(Metadata data) {
+    String traceString = toString() + Statechart.CONCURRENT_STATE_START_CHAR;
+    boolean moreThanOne = false;
+    for (HierarchicalState region : regions) {
+      if (moreThanOne) {
+        traceString += Statechart.CONCURRENT_STATE_DELIMTER_CHAR;
+      }
+      moreThanOne = true;
+      traceString += data.getData(region).currentState.getStateConfigurationInternal(data);
+    }
+    return traceString + Statechart.CONCURRENT_STATE_END_CHAR;
   }
 }

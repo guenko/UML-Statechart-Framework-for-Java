@@ -34,14 +34,18 @@ public class MetadataPersistanceTest {
   @Test
   public void testRestoreState() throws StatechartException {
     Statechart chart = TestCharts.h5();
-    State s3 = chart.getStateByName("c");
-    State h1 = chart.getStateByName("p");
-    State h2 = chart.getStateByName("q");
+    State s3 = chart.getState("p:q:c");
+    State h2 = chart.getState("p:q");
+    State h1 = chart.getState("p");
+    Assert.assertNotNull(s3);
+    Assert.assertNotNull(h2);
+    Assert.assertNotNull(h1);
 
-    TestParameter parameter = new TestParameter();
     Metadata data = new Metadata();
+    TestParameter parameter = new TestParameter();
+    data.setParameter(parameter);
 
-    chart.restoreState(s3, data, parameter);
+    chart.restoreState(s3, data);
     Assert.assertTrue(data.isActive(s3));
     Assert.assertTrue(data.isActive(h2));
     Assert.assertTrue(data.isActive(h1));
@@ -51,8 +55,8 @@ public class MetadataPersistanceTest {
     Assert.assertEquals(result, parameter.path);
 
     // check that the restore only works one time
-    Assert.assertEquals(false, chart.restoreState(s3, data, parameter));
+    Assert.assertEquals(false, chart.restoreState(s3, data));
 
-    chart.shutdown();
+    Statechart.shutdown();
   }
 }

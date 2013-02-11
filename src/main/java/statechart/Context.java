@@ -19,20 +19,68 @@
  */
 package statechart;
 
+import java.util.ArrayList;
+
 /**
- * Domain of the state. Needed for setting up the hierarchy. This class must
- * never be instantiated directly.
+ * The base class of a state holding substates, used to set up the state
+ * hierarchy.
  */
 public abstract class Context extends State {
-  //============================================================================
-  // ATTRIBUTES
-  //============================================================================
+
+  /**
+   * the start start within this context (e.g. hierarchical state, concurrent
+   * state, state chart)
+   */
   protected PseudoState startState = null;
-  
-  //============================================================================
-  // METHODS
-  //============================================================================
+  /**
+   * All the substates this state (context) has. Used to check the name
+   * uniqueness about substates and to retrieve a state by its state path.
+   */
+  private ArrayList<State> substates = new ArrayList<State>();
+
+  /**
+   * @see statechart.State#State
+   */
   public Context(String name, Context parent, Action entryAction, Action doAction, Action exitAction) throws StatechartException {
     super(name, parent, entryAction, doAction, exitAction);
-  }  
+  }
+
+  /**
+   * Retrieves the substate which has the given name
+   * 
+   * @param name the name of the substate searched for
+   * @return the substate or null if this state has not a substate holding this
+   *         name
+   */
+  public State getSubstate(String name) {
+    for (State state : substates) {
+      if (name.equals(state.name)) {
+        return state;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The given state is a substate of this state.
+   * 
+   * @param state the new substate added
+   */
+  public void addSubstate(State state) {
+    substates.add(state);
+  }
+
+  @Override
+  public State getState(String path) {
+    int firstDelimiter = path.indexOf(Statechart.STATE_PATH_DELIMITER);
+    if (firstDelimiter == -1) {
+      return getSubstate(path);
+    } else {
+      State substate = getSubstate(path.substring(0, firstDelimiter));
+      if (substate == null) {
+        return null;
+      }
+      return substate.getState(path.substring(firstDelimiter + 1));
+    }
+  }
 }

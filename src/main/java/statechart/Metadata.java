@@ -21,36 +21,169 @@ package statechart;
 
 import java.util.HashMap;
 import java.util.Map;
+import statechart.eventqueue.BlockingEventQueue;
+import statechart.eventqueue.EventQueue;
+import statechart.trace.TracingAdapter;
 
 /**
- * Describes runtime specific data of the statechart. The main data is the
- * currently active state, or in general all actives when using hierarchy. For
- * every active state a StateMetadata-Object is created which stores runtime
- * specifiv data for the state (e.g. the time since entering the state). This
- * object is allocated only when the state is active, otherwise it is deleted.
+ * Describes runtime specific data related to a statechart. The main data is the
+ * currently active state, or in general all active states when using hierarchy.
+ * For every active state a StateRuntimedata Object is created storing runtime
+ * specific data for this state (e.g. the time since entering the state). The
+ * StateRuntimedata object is allocated only when it is needed (at least then
+ * the state is active), otherwise it is deleted.
  */
 public class Metadata {
-  //============================================================================
-  // ATTRIBUTES
-  //============================================================================
-  /** Keymap which holds the StateRuntimedata of a state */
+
+  /** the state chart this data object is associated with */
+  private Statechart chart = null;
+  /** The event queue for the events belonging to this data object */
+  private EventQueue eventQueue = null;
+  /** key map holding the StateRuntimedata per state when it is needed */
   private Map<State, StateRuntimedata> activeStates = new HashMap<State, StateRuntimedata>();
-  
-  //============================================================================
-  // METHODS
-  //============================================================================
+  /** user may store own data there */
+  private Parameter parameter = null;
   /**
-   * Creates a Metadata object.
+   * the current tracer used for the tracing feature, if not set tracing is
+   * disabled
+   */
+  private TracingAdapter tracer = null;
+
+  /**
+   * Creates a Metadata object without tracing facility.
    */
   public Metadata() {
+  }
+
+  /**
+   * Creates a Metadata object with the given Tracing adapter.
+   * 
+   * @param tracer Tracer to be used
+   */
+  public Metadata(TracingAdapter tracer) {
+    this.tracer = tracer;
+  }
+
+  /**
+   * @return the event queue associated with this data object
+   */
+  public EventQueue getEventQueue() {
+    return eventQueue;
+  }
+
+  /**
+   * @return user parameter if set, null otherwise
+   */
+  public Parameter getParameter() {
+    return parameter;
+  }
+
+  /**
+   * @param parameter user specific data
+   */
+  public void setParameter(Parameter parameter) {
+    this.parameter = parameter;
+  }
+
+  /**
+   * @param tracer the current tracer used for the tracing feature, when null
+   *          tracing is disabled
+   */
+  public void setTracer(TracingAdapter tracer) {
+    this.tracer = tracer;
+  }
+
+  /**
+   * @return the current tracer used for the tracing feature, when null is
+   *         returned tracing is disabled
+   */
+  public TracingAdapter getTracer() {
+    return tracer;
   }
 
   //============================================================================
 
   /**
-   * Checks wether the given state is active or not.
+   * 
+   */
+  /**
+   * Associates the given state chart with this data object and starts the state
+   * machine by triggering the start transitions
+   * 
+   * @param chart the state chart this data object should be associated with
+   * @return
+   */
+  public boolean start(Statechart chart) {
+    this.chart = chart;
+    chart.addDataReference(this);
+    eventQueue = new BlockingEventQueue(chart);
+    reset();
+    activate(chart);
+    activate(chart.startState);
+    return dispatch(null);
+  }
+
+  /**
+   * dispatches the event to the statechart, which takes care of delegating the
+   * incoming event to the current state.
+   */
+  public boolean dispatch(Event event) {
+    assert (chart != null);
+    return chart.dispatch(this, event);
+  }
+
+  /**
+   * Initializes the Statechart in the runtime data. Sets the start state and
+   * triggers the initial state chart transitions asynchronously.
+   * 
+   * @throws InterruptedException
+   */
+  public boolean startAsynchron(Statechart chart) throws InterruptedException {
+    this.chart = chart;
+    chart.addDataReference(this);
+    eventQueue = new BlockingEventQueue(chart);
+    reset();
+    activate(chart);
+    activate(chart.startState);
+    return dispatchAsynchron(null);
+  }
+
+  /**
+   * Adds an event to the event queue.
+   * 
+   * @param event
+   * @return whether the event is placed to the event queue
+   */
+  public boolean dispatchAsynchron(Event event) {
+    assert (chart != null);
+    // TODO: really needed?
+    if (eventQueue.isShutdown()) {
+      return false;
+    }
+    return eventQueue.addEvent(this, event);
+  }
+
+  /**
+   * Shutdown the data object
+   */
+  public void shutdown() {
+    // shutdown the event queue
+    eventQueue.shutdown(1000);
+    // remove reference from the state chart if it is already initialized
+    if (chart != null) {
+      chart.remvoeDataReference(this);
+      chart = null;
+    }
+    reset();
+  }
+
+  //============================================================================
+
+  /**
+   * Checks whether the given state is active or not.
    */
   public boolean isActive(State state) {
+    assert (state != null);
     if (activeStates.containsKey(state)) {
       return getData(state).active;
     }
@@ -86,8 +219,8 @@ public class Metadata {
     data.currentState = null;
 
     // update the context. if context is null we are at top level
-    if (state.context != null) {
-      data = activeStates.get(state.context);
+    if (state.parent != null) {
+      data = activeStates.get(state.parent);
       data.currentState = state;
     }
   }
@@ -102,15 +235,10 @@ public class Metadata {
       StateRuntimedata data = getData(state);
 
       // If we store the history of a hierarchical state, keep it
-      if (state instanceof PseudoState 
-          && (((PseudoState)state).type == PseudoState.pseudostate_deep_history
-          || ((PseudoState)state).type == PseudoState.pseudostate_history)) {
+      if (state instanceof PseudoState && (((PseudoState)state).type == PseudoState.pseudostate_deep_history || ((PseudoState)state).type == PseudoState.pseudostate_history)) {
         data.active = false;
         return;
       }
-            
-      data.timeoutEvents.clear();
-      data.currentState = null;
       data = null;
       activeStates.remove(state);
     }
@@ -135,9 +263,30 @@ public class Metadata {
   //============================================================================
 
   /**
-   * Resets the metadata object for reuse 
+   * Resets the metadata object for reuse
    */
   public void reset() {
     activeStates.clear();
+  }
+
+  /**
+   * Get a string representing the current state configuration starting with the
+   * current substate of the statechart (the name of the statechart itself is
+   * not included). This shows all active end node states of all concurrent
+   * states.
+   */
+  public String getStateConfiguration() {
+    if (chart == null) {
+      return "";
+    }
+    // get first level substate of the statechart this data is associated
+    State currentState = getData(chart).currentState;
+    // if statechart data is not yet initialized
+    if (currentState == null) {
+      return "";
+    }
+    // start with state name of the current substate of the first level, so the
+    // statechart name itself is not included
+    return currentState.getStateConfigurationInternal(this);
   }
 }

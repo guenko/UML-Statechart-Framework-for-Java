@@ -23,13 +23,11 @@ package statechart;
  * Interface for an action which can be called by a transition or state.
  */
 public interface Action {
+
   /**
-   * Called by the state or transition.
+   * Executes the action, to be called by the state or transition.
    * 
-   * @param data
-   *          The runtime data object
-   * @param param
-   *          The parameter for this action
+   * @param data The runtime data object
    */
-  void execute(Metadata data, Parameter param);
+  void execute(Metadata data);
 }

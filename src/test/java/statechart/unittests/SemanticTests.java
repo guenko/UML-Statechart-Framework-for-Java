@@ -26,68 +26,93 @@ import statechart.Metadata;
 import statechart.State;
 import statechart.Statechart;
 import statechart.StatechartException;
+import statechart.trace.CollectingLineTracer;
 
 public class SemanticTests {
+
+  /** used for better tracing */
+  public static class MyMetadata extends Metadata {
+
+    MyMetadata() {
+      this("");
+    }
+
+    MyMetadata(String name) {
+      super(new CollectingLineTracer(name));
+      setParameter(new TestParameter());
+    }
+
+    String getPath() {
+      return ((TestParameter)getParameter()).path;
+    }
+
+    String resetPath() {
+      return ((TestParameter)getParameter()).path = "";
+    }
+
+    void setGuardValue(int guardvalue) {
+      ((TestParameter)getParameter()).guardvalue = guardvalue;
+    }
+  }
+
   @Test
   public void testEventQueue() throws StatechartException, InterruptedException {
-    Statechart chart = TestCharts.t2();
+    // Statechart chart = TestCharts.t2(10);
+    Statechart chart = TestCharts.t2(2);
 
     TestEvent s1 = new TestEvent(1);
     TestEvent s2 = new TestEvent(2);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
-        
-    chart.startAsynchron(data, parameter);    
-    chart.dispatchAsynchron(data, s1, parameter);
-    chart.dispatchAsynchron(data, s2, parameter); 
-    
+    MyMetadata data = new MyMetadata("EventQueue");
+
+    data.startAsynchron(chart);
+    data.dispatchAsynchron(s1);
+    data.dispatchAsynchron(s2);
+
     // Wait until the statechart reached its final state
-    State current = null; 
-    while(current == null || !(current instanceof FinalState)) {      
+    State current = null;
+    while (current == null || !(current instanceof FinalState)) {
       Thread.sleep(100);
-      synchronized(data) {
+      synchronized (data) {
         current = data.getData(chart).currentState;
       }
     }
-    chart.shutdown();
-    Assert.assertEquals("D:start A:a D:a A:a D:a A:end", parameter.path);
+    data.shutdown();
+    Assert.assertEquals("D:start A:a D:a A:a D:a A:end", data.getPath());
   }
 
   @Test
   public void testSemantics1() throws StatechartException {
     Statechart chart = TestCharts.t1();
 
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics1");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertEquals("D:start A:a D:a A:b D:b A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertTrue(chart.start(data));
+    Assert.assertEquals("D:start A:a D:a A:b D:b A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics2() throws StatechartException {
-    Statechart chart = TestCharts.t2();
+    Statechart chart = TestCharts.t2(10);
 
     TestEvent s1 = new TestEvent(1);
     TestEvent s2 = new TestEvent(2);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics2");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, s1, parameter));
-    Assert.assertTrue(chart.dispatch(data, s2, parameter));
-    Assert.assertEquals("D:start A:a D:a A:a D:a A:end", parameter.path);
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, s1));
+    Assert.assertTrue(chart.dispatch(data, s2));
+    Assert.assertEquals("D:start A:a D:a A:a D:a A:end", data.getPath());
 
     // check if more than one signals create a longer way
-    parameter.path = "";
+    data.resetPath();
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, s1, parameter));
-    Assert.assertTrue(chart.dispatch(data, s1, parameter));
-    Assert.assertTrue(chart.dispatch(data, s2, parameter));
-    Assert.assertEquals("D:start A:a D:a A:a D:a A:a D:a A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, s1));
+    Assert.assertTrue(chart.dispatch(data, s1));
+    Assert.assertTrue(chart.dispatch(data, s2));
+    Assert.assertEquals("D:start A:a D:a A:a D:a A:a D:a A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -95,89 +120,83 @@ public class SemanticTests {
     Statechart chart = TestCharts.t3();
 
     TestEvent s1 = new TestEvent(1);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics3");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, s1, parameter));
-    Assert.assertEquals("D:start A:a D:a A:b D:b A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, s1));
+    Assert.assertEquals("D:start A:a D:a A:b D:b A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics4() throws StatechartException, InterruptedException {
     Statechart chart = TestCharts.t3();
 
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics4");
 
-    Assert.assertTrue(chart.start(data, parameter));
+    Assert.assertTrue(chart.start(data));
 
-    State current = null; 
-    while(current == null || !(current instanceof FinalState)) {      
+    State current = null;
+    while (current == null || !(current instanceof FinalState)) {
       Thread.sleep(100);
-      synchronized(data) {
+      synchronized (data) {
         current = data.getData(chart).currentState;
       }
     }
 
-    Assert.assertEquals("D:start A:a D:a A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertEquals("D:start A:a D:a A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics5() throws StatechartException {
     Statechart chart = TestCharts.t4();
 
-    TestParameter parameter = new TestParameter();
-    parameter.guardvalue = 0;
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics5");
+    data.setGuardValue(0);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertEquals("D:start A:a D:a A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertTrue(chart.start(data));
+    Assert.assertEquals("D:start A:a D:a A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics6() throws StatechartException {
     Statechart chart = TestCharts.t4();
 
-    TestParameter parameter = new TestParameter();
-    parameter.guardvalue = 1;
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics6");
+    data.setGuardValue(1);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertEquals("D:start A:a D:a A:j1 D:j1 E:a1 A:b D:b A:end", parameter.path);
-    chart.shutdown();
+    Assert.assertTrue(chart.start(data));
+    Assert.assertEquals("D:start A:a D:a A:j1 D:j1 E:a1 A:b D:b A:end", data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics7() throws StatechartException {
     Statechart chart = TestCharts.t4();
 
-    TestParameter parameter = new TestParameter();
-    parameter.guardvalue = 2;
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics7");
+    data.setGuardValue(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
+    Assert.assertTrue(chart.start(data));
     Assert.assertEquals(
         "D:start A:a D:a A:j1 D:j1 E:a2 A:c D:c A:j2 D:j2 E:a3 A:j3 D:j3 E:a4 A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics8() throws StatechartException {
     Statechart chart = TestCharts.h1();
 
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics8");
 
-    Assert.assertTrue(chart.start(data, parameter));
+    Assert.assertTrue(chart.start(data));
     Assert.assertEquals(
         "D:start A:p A:start p D:start p A:a D:a A:b D:b A:end p D:end p D:p A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -185,15 +204,14 @@ public class SemanticTests {
     Statechart chart = TestCharts.h2();
 
     TestEvent event = new TestEvent(1);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics9");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event));
     Assert.assertEquals(
         "D:start A:p A:start p D:start p A:a D:a A:b D:b A:end p D:end p D:p A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -201,15 +219,14 @@ public class SemanticTests {
     Statechart chart = TestCharts.h3();
 
     TestEvent event = new TestEvent(1);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics10");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event));
     Assert.assertEquals(
         "D:start A:p A:start p D:start p A:a D:a A:b D:b A:end p D:end p D:p A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -217,14 +234,13 @@ public class SemanticTests {
     Statechart chart = TestCharts.h3();
 
     TestEvent event = new TestEvent(2);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics11");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event));
     Assert.assertEquals("D:start A:p A:start p D:start p A:a D:a D:p A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -234,25 +250,24 @@ public class SemanticTests {
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
     TestEvent event3 = new TestEvent(3);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics12");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event3, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event3));
 
     String result = "D:start A:p A:start p D:start p U:history p A:a D:a ";
     result += "D:p A:p A:start p D:start p A:a D:a A:b D:b D:p A:p ";
     result += "A:start p D:start p A:b D:b A:a D:a D:p A:p A:start p ";
     result += "D:start p A:a D:a A:b D:b A:end p D:end p D:p A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
@@ -263,46 +278,44 @@ public class SemanticTests {
     TestEvent event2 = new TestEvent(2);
     TestEvent event3 = new TestEvent(3);
     TestEvent event4 = new TestEvent(4);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics13");
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event4, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event3, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event4));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event3));
 
     String result = "D:start A:p A:start p D:start p U:history p A:a D:a ";
     result += "A:q A:start q D:start q A:b D:b A:c D:c D:q D:p A:p ";
     result += "A:start p D:start p A:q A:c D:c D:q A:a D:a A:q ";
     result += "A:start q D:start q A:b D:b D:q A:end p D:end p D:p A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics14() throws StatechartException {
     Statechart chart = TestCharts.h6();
 
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics14");
 
-    Assert.assertTrue(chart.start(data, parameter));
+    Assert.assertTrue(chart.start(data));
     Assert.assertEquals("D:start A:p A:q A:r D:r D:q D:p A:x A:y D:y D:x A:end",
-        parameter.path);
-    chart.shutdown();
+        data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics15() throws StatechartException {
     Statechart chart = TestCharts.c1();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics15");
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:p ";
@@ -325,24 +338,23 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics16() throws StatechartException {
     Statechart chart = TestCharts.c2();
 
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+    MyMetadata data = new MyMetadata("Semantics16");
 
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
 
     String result = "D:start ";
     result += "A:p ";
@@ -371,25 +383,25 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics17() throws StatechartException {
     Statechart chart = TestCharts.c2();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+
+    MyMetadata data = new MyMetadata("Semantics17");
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
 
     String result = "D:start ";
 
-    result += "A:p "; 
+    result += "A:p ";
     result += "A:p-r1 ";
     result += "A:start p-r1 ";
     result += "D:start p-r1 ";
@@ -409,7 +421,7 @@ public class SemanticTests {
     result += "D:b ";
     result += "A:end p-r1 "; // e . end p-r2
     result += "D:e ";
-    result += "A:end p-r2 "; 
+    result += "A:end p-r2 ";
     result += "D:end p-r1 ";
     result += "D:p-r1 ";
     result += "D:end p-r2 ";
@@ -417,21 +429,21 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics18() throws StatechartException {
     Statechart chart = TestCharts.c2();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+
+    MyMetadata data = new MyMetadata("Semantics18");
     TestEvent event1 = new TestEvent(1);
     TestEvent event3 = new TestEvent(3);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event3, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event3));
 
     String result = "D:start ";
     result += "A:p ";
@@ -452,16 +464,17 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
+  @Test
   public void testSemantics19() throws StatechartException {
     Statechart chart = TestCharts.c3();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics19");
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:p ";
@@ -482,17 +495,17 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
-  
+
   @Test
   public void testSemantics20() throws StatechartException {
     Statechart chart = TestCharts.c4();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics20");
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:p ";
@@ -511,21 +524,21 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics21() throws StatechartException {
     Statechart chart = TestCharts.c5();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+
+    MyMetadata data = new MyMetadata("Semantics21");
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(!chart.dispatch(data, event2, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(!chart.dispatch(data, event2));
 
     String result = "D:start ";
     result += "A:p ";
@@ -544,21 +557,21 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics22() throws StatechartException {
     Statechart chart = TestCharts.c5();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+
+    MyMetadata data = new MyMetadata("Semantics22");
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event1));
 
     String result = "D:start ";
     result += "A:p ";
@@ -579,17 +592,17 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics23() throws StatechartException {
     Statechart chart = TestCharts.c6();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics23");
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:fork ";
@@ -610,18 +623,18 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics24() throws StatechartException {
     Statechart chart = TestCharts.c7();
-    TestParameter parameter = new TestParameter();
-    parameter.guardvalue = 1;
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics24");
+    data.setGuardValue(1);
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:fork ";
@@ -648,18 +661,18 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics25() throws StatechartException {
     Statechart chart = TestCharts.c7();
-    TestParameter parameter = new TestParameter();
-    parameter.guardvalue = 0;
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics25");
+    data.setGuardValue(0);
+    
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:fork ";
@@ -688,17 +701,17 @@ public class SemanticTests {
     result += "D:p ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics26() throws StatechartException {
     Statechart chart = TestCharts.c8();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
+    MyMetadata data = new MyMetadata("Semantics26");
+
+    Assert.assertTrue(chart.start(data));
 
     String result = "D:start ";
     result += "A:p ";
@@ -711,7 +724,7 @@ public class SemanticTests {
     result += "D:start p-r2 ";
     result += "A:b ";
     result += "D:b ";
-    result += "A:c "; 
+    result += "A:c ";
     result += "D:a ";
     result += "D:p-r1 ";
     result += "D:c ";
@@ -721,26 +734,26 @@ public class SemanticTests {
     result += "D:join ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
-  public void testSemantics27() throws InterruptedException, StatechartException{
+  public void testSemantics27() throws InterruptedException, StatechartException {
     Statechart chart = TestCharts.c9();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
-    
-    State current = null; 
-    while(current == null || !(current instanceof FinalState)) {      
+    MyMetadata data = new MyMetadata("Semantics27");
+
+    Assert.assertTrue(chart.start(data));
+
+    State current = null;
+    while (current == null || !(current instanceof FinalState)) {
       Thread.sleep(100);
-      synchronized(data) {
+      synchronized (data) {
         current = data.getData(chart).currentState;
       }
     }
-    
+
     String result = "D:start ";
     result += "A:p ";
     result += "A:p-r1 ";
@@ -768,25 +781,25 @@ public class SemanticTests {
     result += "D:join ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
   @Test
   public void testSemantics28() throws StatechartException {
     Statechart chart = TestCharts.c10();
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
+
+    MyMetadata data = new MyMetadata("Semantics28");
     TestEvent event1 = new TestEvent(1);
     TestEvent event2 = new TestEvent(2);
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event1, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event1));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event2));
 
     String result = "D:start ";
     result += "A:c ";
@@ -829,35 +842,34 @@ public class SemanticTests {
     result += "D:c ";
     result += "A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
-  
+
   // Checks the deep history state when the transition is made from the substate
-  @Test  
+  @Test
   public void testSemantics29() throws StatechartException {
     Statechart chart = TestCharts.h5();
-    
+
     TestEvent event2 = new TestEvent(2);
     TestEvent event3 = new TestEvent(3);
     TestEvent event4 = new TestEvent(4);
     TestEvent event5 = new TestEvent(5);
-    TestParameter parameter = new TestParameter();
-    Metadata data = new Metadata();
 
-    Assert.assertTrue(chart.start(data, parameter));
-    Assert.assertTrue(chart.dispatch(data, event2, parameter));
-    Assert.assertTrue(chart.dispatch(data, event4, parameter));
-    Assert.assertTrue(chart.dispatch(data, event5, parameter));
-    Assert.assertTrue(chart.dispatch(data, event3, parameter));
-    
+    MyMetadata data = new MyMetadata("Semantics29");
+
+    Assert.assertTrue(chart.start(data));
+    Assert.assertTrue(chart.dispatch(data, event2));
+    Assert.assertTrue(chart.dispatch(data, event4));
+    Assert.assertTrue(chart.dispatch(data, event5));
+    Assert.assertTrue(chart.dispatch(data, event3));
+
     String result = "D:start A:p A:start p D:start p U:history p A:a D:a ";
     result += "A:q A:start q D:start q A:b D:b A:c D:c D:q D:p A:d D:d A:p ";
     result += "A:start p D:start p A:q A:c D:c D:q A:end p D:end p D:p A:end";
 
-    Assert.assertEquals(result, parameter.path);
-    chart.shutdown();
+    Assert.assertEquals(result, data.getPath());
+    data.shutdown();
   }
 
 }
-

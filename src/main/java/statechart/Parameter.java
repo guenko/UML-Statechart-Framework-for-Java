@@ -20,13 +20,7 @@
 package statechart;
 
 /**
- * Baseclass for call parameter. All Parameters must have the ability to store
- * the current time of the active state. This value is set by every state itself.
+ * Interface for user parameter to be added to a meta data object.
  */
-public class Parameter {
-  /**
-   * Creates a parameter
-   */
-  public Parameter() {
-  };
+public interface Parameter {
 }

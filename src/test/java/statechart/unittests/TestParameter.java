@@ -21,7 +21,7 @@ package statechart.unittests;
 
 import statechart.Parameter;
 
-public class TestParameter extends Parameter {
+public class TestParameter implements Parameter {
     String path = new String();
     int guardvalue = 0;
 }

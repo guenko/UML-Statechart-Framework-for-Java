@@ -20,61 +20,31 @@
 package statechart;
 
 /**
- * Timeout event for a transition
+ * This represents the static timeout event assigned to a transition of the
+ * statechart. Whereas an timeout instance (timeout occurrence) is represented
+ * by an object of the TimeoutOccurrenceEvent class.
  */
 public class TimeoutEvent extends Event {
-  //============================================================================
-  // ATTRIBUTES
-  //============================================================================
-  /**
-   * The timeout value in milliseconds
-   */
+
+  /** unique name of the timeout event */
+  static public final String TIMEOUT_EVENT_NAME = "TimeoutEvent";
+  /** The timeout value in milliseconds */
   private long timeout;
-  
-  //============================================================================
-  // METHODS
-  //============================================================================
+
   /**
-   * Creates a timeout event.
+   * Creates a timeout event to be attached to a transition.
+   * 
    * @param timeout The timeout value in milliseconds
    */
   public TimeoutEvent(long timeout) {
-    super("TimeoutEvent");
+    super(TIMEOUT_EVENT_NAME);
     this.timeout = timeout;
   }
 
-  //============================================================================
-
   /**
-   * Checks if the timevalue in the given parameter is larger than the one
-   * stored in this event.
-   *
-   * @param event the event to compare
-   * @param data The runtime data object
-   * @param param The parameter for this event. Must be a TimeoutParameter type.
-   */
-  public boolean equals(Event event, Metadata data, Parameter param) {
-    if(event instanceof TimeoutEvent) {
-      return true;
-    }
-    return false;
-  }
-
-  //============================================================================
-
-  /**
-   * Gets the timeout of the event.
+   * Get the timeout value of the event.
    */
   public long getTimout() {
     return timeout;
-  }
-  
-  //============================================================================
-
-  /**
-   * Sets the current timeout
-   */
-  public void setTimeout(long timeout) {
-    this.timeout = timeout;
   }
 }
